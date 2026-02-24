@@ -41,7 +41,7 @@ api:
 external_components:
   - source:
       type: local
-      path: components
+      path: ../components
 
 berbel:
   id: berbel_controller
