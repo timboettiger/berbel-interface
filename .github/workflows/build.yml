@@ -60,7 +60,7 @@ jobs:
 
       - name: Install ESPHome
         run: |
-          pip install --upgrade esphome
+          pip install -r requirements.txt
 
       - name: Generate version.h
         run: bash scripts/update_version.sh
