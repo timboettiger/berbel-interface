@@ -1,0 +1,14 @@
+substitutions:
+  device_name: berbel-esp32dev
+  friendly_name: "Berbel ESP32 DevKit"
+
+packages:
+  base: !include ../berbel_esp32.yaml
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  platform: ESP32
+  board: esp32dev
+  framework:
+    type: arduino
