@@ -1,244 +1,480 @@
-# Berbel Skyline Edge Base - Home Assistant Integration
+# Berbel ESP32
 
-Note: Experimental legacy support scaffolding for older Berbel models (HOOD_PER) has been added. See "Legacy (older models)" section below.
+Ein **ESPHome**-basiertes Firmware-Projekt für den ESP32, das eine **Berbel Dunstabzugshaube** (Skyline Edge Base) über **Bluetooth Low Energy (BLE)** steuert. Der ESP32 stellt eine vollständige **HTTP-API** sowie ein eingebettetes **Web-Interface** für Einrichtung und Steuerung bereit.
 
-A Home Assistant integration for the **Berbel Skyline Edge Base** range hood with Bluetooth Low Energy (BLE) connectivity.
+## Funktionen
 
-> **⚠️ Device Compatibility**: This integration is specifically developed and tested for the **Berbel Skyline Edge Base** model. Other Berbel range hoods may work but are not tested or officially supported.
+- **Lüftersteuerung**: Stufe 0–3 über HTTP-API und Web-Interface
+- **Lichtsteuerung**: Oben und Unten separat – Ein/Aus, Helligkeit (0–100 %), Farbtemperatur (2700–6500 K)
+- **Nachlauf-Monitoring**: Statusanzeige im Web-Interface
+- **BLE-Pairing**: Einfaches Koppeln über Web-Interface (Scan → Auswahl → Koppeln)
+- **WiFi-Ersteinrichtung**: Captive-Portal-Accesspoint bei fehlendem WLAN
+- **Persistente Einstellungen**: Geräte-MAC dauerhaft im NVS des ESP32 gespeichert
+- **OTA-Updates**: Firmware-Updates über WLAN
+- **Multi-Board-Support**: ESP32-DEV, ESP32-S3, ESP32-C3
 
-## ✨ Features
+---
 
-### 🌬️ Fan Control
-- **3 Speed Levels**: Precise control with 0-3 speed settings
-- **Percentage Control**: Set speed as percentage (0-100%)
-- **Direct On/Off**: Toggle between off and level 1
-- **Postrun Status**: Monitor automatic fan postrun operation
+## Inhalt
 
-### 💡 Dual Light Control
-- **Separate Top & Bottom Lights**: Independent control of both light zones
-- **Brightness Control**: 0-100% dimming for each light
-- **Color Temperature**: Adjustable from 2700K (warm) to 6500K (cool)
-- **Individual On/Off**: Control each light independently
+- [Voraussetzungen](#voraussetzungen)
+- [Installation](#installation)
+- [Konfiguration](#konfiguration)
+- [Bauen und Flashen](#bauen-und-flashen)
+- [Ersteinrichtung](#ersteinrichtung)
+- [HTTP-API](#http-api)
+- [Web-Interface](#web-interface)
+- [BLE-Protokoll](#ble-protokoll)
+- [Versionsschema](#versionsschema)
+- [GitHub Actions / CI](#github-actions--ci)
+- [Projektstruktur](#projektstruktur)
+- [Troubleshooting](#troubleshooting)
 
-### 🔧 Smart Features
-- **Automatic Discovery**: Plug-and-play Bluetooth setup
-- **Local Control**: No cloud connection required
-- **Real-time Updates**: Status updates every 18 seconds
-- **Connection Pooling**: Optimized BLE performance
-- **Error Handling**: Robust connection management with automatic retry
+---
 
-## 🏠 Home Assistant Entities
+## Voraussetzungen
 
-Each Berbel Skyline Edge Base device creates **4 entities**:
+| Anforderung | Minimalversion |
+|-------------|----------------|
+| Python | 3.10 |
+| ESPHome | 2024.6.0 |
+| Git | beliebig |
+| Make | beliebig |
 
-1. **🌬️ Fan Entity** - Speed control and on/off switching
-2. **💡 Light Top Entity** - Upper light with brightness and color temperature
-3. **💡 Light Bottom Entity** - Lower light with brightness and color temperature  
-4. **🔄 Postrun Binary Sensor** - Shows when automatic postrun is active
+### Unterstützte ESP32-Boards
 
-## 📋 Requirements
+| Board | Chip | Empfohlen |
+|-------|------|-----------|
+| `esp32dev` | ESP32 (original) | ✅ Standard-Board |
+| `esp32s3` | ESP32-S3 | ✅ Mehr RAM/Flash |
+| `esp32c3` | ESP32-C3 | ✅ Kompaktes Board |
 
-- **Home Assistant**: 2023.1 or newer
-- **Bluetooth**: Built-in Bluetooth or USB Bluetooth adapter
-- **Device**: Berbel Skyline Edge Base range hood
-- **Python**: 3.10 or newer
+---
 
-## 🚀 Installation
+## Installation
 
-### HACS (Recommended)
+### Automatisch (empfohlen)
 
-1. Open HACS in Home Assistant
-2. Click on "Integrations" 
-3. Click the three dots menu → "Custom repositories"
-4. Add this repository URL: `https://github.com/dirkbloessl/berbel-ha`
-5. Category: "Integration"
-6. Click "Add" and then "Install"
-7. Restart Home Assistant
-
-### Manual Installation
-
-1. Download the latest release from GitHub
-2. Extract the `custom_components/berbel` folder to your Home Assistant `custom_components` directory
-3. Restart Home Assistant
-
-## ⚙️ Configuration
-
-### Automatic Discovery (Recommended)
-
-1. Go to **Settings** → **Devices & Services**
-2. Your Berbel Skyline Edge Base should appear in "Discovered" devices
-3. Click "Configure" and follow the setup wizard
-
-### Manual Setup
-
-1. Go to **Settings** → **Devices & Services** → **Add Integration**
-2. Search for "Berbel"
-3. Select your device from the list
-4. Complete the configuration
-
-## 📱 Usage Examples
-
-### Basic Fan Control
-```yaml
-# Turn fan on (level 1)
-service: fan.turn_on
-target:
-  entity_id: fan.berbel_fan
-
-# Set specific speed (33% = level 1, 66% = level 2, 100% = level 3)
-service: fan.set_percentage
-target:
-  entity_id: fan.berbel_fan
-data:
-  percentage: 66
+```bash
+git clone https://github.com/timboettiger/berbel-interface.git
+cd berbel-interface
+bash setup.sh
 ```
 
-### Light Control
-```yaml
-# Turn on top light with 75% brightness and warm white
-service: light.turn_on
-target:
-  entity_id: light.berbel_light_top
-data:
-  brightness_pct: 75
-  color_temp: 370  # Warm white
+Das Skript erkennt das Betriebssystem (macOS / Linux), prüft alle Abhängigkeiten und installiert fehlende Komponenten automatisch.
 
-# Turn on both lights
-service: light.turn_on
-target:
-  entity_id: 
-    - light.berbel_light_top
-    - light.berbel_light_bottom
+### Manuell
+
+```bash
+# Python 3.10+
+python3 --version
+
+# ESPHome installieren
+pip install "esphome>=2024.6.0"
 ```
 
-### Automation Examples
-```yaml
-# Turn on lights when cooking
-automation:
-  - alias: "Kitchen Hood Lights On"
-    trigger:
-      platform: state
-      entity_id: binary_sensor.kitchen_motion
-      to: 'on'
-    action:
-      service: light.turn_on
-      target:
-        entity_id: 
-          - light.berbel_light_top
-          - light.berbel_light_bottom
-      data:
-        brightness_pct: 80
+---
 
-# Auto fan when high humidity
-automation:
-  - alias: "Kitchen Hood Auto Fan"
-    trigger:
-      platform: numeric_state
-      entity_id: sensor.kitchen_humidity
-      above: 70
-    action:
-      service: fan.set_percentage
-      target:
-        entity_id: fan.berbel_fan
-      data:
-        percentage: 66  # Level 2
+## Konfiguration
+
+### secrets.yaml
+
+Kopiere die Vorlage und fülle deine WLAN-Daten ein:
+
+```bash
+cp esphome/secrets.yaml.example esphome/secrets.yaml
 ```
 
-## 🔧 Advanced Services
+Inhalt anpassen:
 
-The integration provides additional services for advanced control:
-
-### `berbel.set_immediate_refresh`
-Control immediate status updates after commands (for performance tuning):
 ```yaml
-service: berbel.set_immediate_refresh
-data:
-  enabled: false  # Disable for better performance
+wifi_ssid: "DeinWLAN"
+wifi_password: "DeinPasswort"
+api_password: "SicheresPasswort"
+ota_password: "SicheresOTAPasswort"
 ```
 
-### `berbel.disconnect_ble`
-Manually disconnect BLE connection (useful for troubleshooting):
+### Optionale Vorkonfiguration (MAC-Adresse)
+
+Wenn die BLE-MAC-Adresse der Dunstabzugshaube bereits bekannt ist, kann sie direkt in `esphome/berbel_esp32.yaml` angegeben werden:
+
 ```yaml
-service: berbel.disconnect_ble
+substitutions:
+  device_mac: "AA:BB:CC:DD:EE:FF"
 ```
 
-## 🐛 Troubleshooting
+Andernfalls kann das Koppeln nach dem ersten Start über das Web-Interface durchgeführt werden.
 
-### Connection Issues
-- Ensure the range hood is powered on and within Bluetooth range
-- Check that no other device is connected to the range hood
-- Try restarting the Bluetooth service: `sudo systemctl restart bluetooth`
+---
 
-### Performance Issues
-- Disable immediate refresh: Use `berbel.set_immediate_refresh` with `enabled: false`
-- Check for interference from other Bluetooth devices
-- Ensure stable power supply to the range hood
+## Bauen und Flashen
 
-### Debug Logging
-Add to your `configuration.yaml`:
+```bash
+# Abhängigkeiten prüfen
+make check-deps
+
+# Firmware für ESP32-DEV kompilieren
+make build-esp32dev
+
+# Firmware für ESP32-S3 kompilieren
+make build-esp32s3
+
+# Alle Boards auf einmal bauen
+make build-all
+
+# Firmware auf angeschlossenen ESP32 flashen
+make flash-esp32dev
+
+# Seriellen Monitor öffnen
+make logs-esp32dev
+
+# OTA-Update (ESP32 muss im WLAN sein)
+make ota-esp32dev
+
+# Build-Artefakte löschen
+make clean
+```
+
+---
+
+## Ersteinrichtung
+
+### Schritt 1: WiFi einrichten
+
+Beim ersten Start (oder wenn das gespeicherte WLAN nicht verfügbar ist) öffnet der ESP32 automatisch einen WLAN-Accesspoint:
+
+- **SSID**: `Berbel-Setup`
+- **Passwort**: `berbel1234`
+
+Mit diesem Netzwerk verbinden, dann im Browser `http://192.168.4.1` aufrufen und das Heim-WLAN eintragen.
+
+### Schritt 2: Berbel-Dunstabzugshaube koppeln
+
+Nach erfolgreichem WLAN-Login das Web-Interface öffnen:
+
+```
+http://berbel-esp32.local
+```
+
+oder mit der IP-Adresse:
+
+```
+http://<IP-ADRESSE>
+```
+
+1. Im Abschnitt **"Gerät koppeln"** auf **"BLE-Scan starten"** klicken
+2. Warten bis die Dunstabzugshaube in der Liste erscheint (ca. 8 Sekunden)
+3. **"Koppeln"** neben dem Gerät drücken
+4. Der ESP32 verbindet sich und speichert die MAC-Adresse dauerhaft
+
+---
+
+## HTTP-API
+
+Alle Endpunkte auf Port 80 (kein Authentifizierungstoken erforderlich im lokalen Netz).
+
+### Status abrufen
+
+```bash
+GET /api/state
+```
+
+Antwort:
+```json
+{
+  "connected": true,
+  "mac": "AA:BB:CC:DD:EE:FF",
+  "fan_level": 2,
+  "fan_postrun": false,
+  "light_top_on": true,
+  "light_bottom_on": false,
+  "light_top_brightness": 75,
+  "light_bottom_brightness": 0,
+  "light_top_color_kelvin": 4000,
+  "light_bottom_color_kelvin": 2700
+}
+```
+
+### Lüfter steuern
+
+```bash
+POST /api/fan
+Content-Type: application/json
+
+{"level": 2}
+```
+
+| Wert | Bedeutung |
+|------|-----------|
+| `0` | Aus |
+| `1` | Stufe 1 (leise) |
+| `2` | Stufe 2 (mittel) |
+| `3` | Stufe 3 (stark) |
+
+```bash
+# Beispiele mit curl
+curl -X POST http://berbel-esp32.local/api/fan -H "Content-Type: application/json" -d '{"level":2}'
+curl -X POST http://berbel-esp32.local/api/fan -H "Content-Type: application/json" -d '{"level":0}'
+```
+
+### Licht steuern
+
+```bash
+POST /api/light/top       # Licht Oben
+POST /api/light/bottom    # Licht Unten
+Content-Type: application/json
+```
+
+Parameter (alle optional, können kombiniert werden):
+
+| Parameter | Typ | Bereich | Beschreibung |
+|-----------|-----|---------|--------------|
+| `on` | bool | `true`/`false` | Ein- oder ausschalten |
+| `brightness` | int | 0–100 | Helligkeit in Prozent |
+| `color_temp` | int | 2700–6500 | Farbtemperatur in Kelvin |
+
+```bash
+# Licht Oben einschalten mit 75% Helligkeit und warmweißem Licht
+curl -X POST http://berbel-esp32.local/api/light/top \
+  -H "Content-Type: application/json" \
+  -d '{"on": true, "brightness": 75, "color_temp": 2700}'
+
+# Licht Unten ausschalten
+curl -X POST http://berbel-esp32.local/api/light/bottom \
+  -H "Content-Type: application/json" \
+  -d '{"on": false}'
+
+# Nur Helligkeit ändern
+curl -X POST http://berbel-esp32.local/api/light/top \
+  -H "Content-Type: application/json" \
+  -d '{"brightness": 50}'
+```
+
+### BLE-Scan und Pairing
+
+```bash
+# Scan starten
+POST /api/scan
+
+# Scan-Ergebnisse abrufen (polling)
+GET /api/scan/results
+```
+
+Antwort Scan-Ergebnisse:
+```json
+{
+  "scanning": false,
+  "devices": [
+    {"address": "AA:BB:CC:DD:EE:FF", "name": "Berbel SEB", "rssi": -65}
+  ]
+}
+```
+
+```bash
+# Gerät koppeln
+POST /api/pair
+Content-Type: application/json
+
+{"mac": "AA:BB:CC:DD:EE:FF"}
+```
+
+```bash
+# Verbindung trennen
+POST /api/disconnect
+```
+
+---
+
+## Web-Interface
+
+Das Web-Interface ist unter `http://berbel-esp32.local/` erreichbar und bietet:
+
+- **Verbindungsstatus** mit MAC-Adresse
+- **Lüftersteuerung** (Stufe 0–3, Schaltflächen)
+- **Nachlauf-Status** (Anzeige)
+- **Licht Oben**: Ein/Aus, Helligkeit-Slider, Farbtemperatur-Slider
+- **Licht Unten**: Ein/Aus, Helligkeit-Slider, Farbtemperatur-Slider
+- **Gerät koppeln**: BLE-Scan, Geräteliste, Koppeln-Schaltfläche
+- **Automatisches Polling** alle 10 Sekunden
+
+---
+
+## BLE-Protokoll
+
+### GATT-Charakteristiken
+
+| UUID | Richtung | Beschreibung |
+|------|----------|--------------|
+| `F006F005-5745-4053-8043-62657262656C` | Lesen | Fan/Licht/Nachlauf-Status |
+| `F006F006-5745-4053-8043-62657262656C` | Lesen/Schreiben | Helligkeit + Steuerbefehle |
+| `F006F007-5745-4053-8043-62657262656C` | Lesen/Schreiben | Farbtemperatur |
+
+### Status-Byte-Layout
+
+```
+Byte 0:  0x10 → Lüfter Stufe 1
+Byte 1:  0x01 → Lüfter Stufe 2  |  0x10 → Lüfter Stufe 3
+Byte 2:  & 0x10 → Licht Oben AN
+Byte 4:  & 0x10 → Licht Unten AN
+Byte 5:  & 0x90 → Nachlauf aktiv
+```
+
+### Helligkeits-Byte-Layout (Charakteristik F006F006)
+
+```
+Byte 4: Helligkeit Unten (0–255)
+Byte 5: Helligkeit Oben  (0–255)
+```
+
+### Farb-Byte-Layout (Charakteristik F006F007)
+
+```
+Byte 6: Farbtemperatur Unten (0=2700K warm, 255=6500K kalt)
+Byte 7: Farbtemperatur Oben
+```
+
+### Befehls-Format (31 Bytes)
+
+```
+Lüfter:
+  01 58 00 00 00 00 00 00 00 00 00 00 00 00 00 00 LL 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  LL: 00=Aus, 01=Stufe1, 02=Stufe2, 03=Stufe3
+
+Licht (Helligkeit):
+  01 63 00 00 BB TT 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  BB: Helligkeit Unten (0–255)
+  TT: Helligkeit Oben  (0–255)
+```
+
+---
+
+## Versionsschema
+
+Format: `MAJOR.MINOR.PATCH+HASH`
+
+- `MAJOR.MINOR`: Manuell in `version.txt` gepflegt
+- `PATCH`: Automatisch aus `git rev-list --count HEAD`
+- `HASH`: Kurzer Git-Commit-Hash (`git rev-parse --short HEAD`)
+
+Generiert durch `scripts/update_version.sh` → `esphome/version.h`
+
+```bash
+bash scripts/update_version.sh
+# Ausgabe: 0.0.42+a1b2c3d
+```
+
+---
+
+## GitHub Actions / CI
+
+### Workflow: `build.yml`
+
+Trigger: Push auf `main` oder `master`
+
+1. **Version berechnen** (job: `version`)
+2. **Firmware für alle Boards bauen** (job: `build`, Matrix: esp32dev, esp32s3, esp32c3)
+3. **GitHub Release erstellen** (job: `release`) mit allen `.bin`-Dateien als Anhänge
+
+### Release-Artefakte
+
+| Datei | Board |
+|-------|-------|
+| `berbel-esp32-esp32dev-firmware.bin` | ESP32 DevKit v1 |
+| `berbel-esp32-esp32s3-firmware.bin` | ESP32-S3 DevKitC-1 |
+| `berbel-esp32-esp32c3-firmware.bin` | ESP32-C3 DevKitM-1 |
+
+---
+
+## Projektstruktur
+
+```
+berbel-interface/
+├── esphome/
+│   ├── berbel_esp32.yaml          ← Basis-Konfiguration
+│   ├── version.h                  ← Auto-generiert (nicht commiten)
+│   ├── secrets.yaml               ← WLAN-Daten (nicht commiten)
+│   ├── secrets.yaml.example       ← Vorlage
+│   ├── boards/
+│   │   ├── esp32dev.yaml
+│   │   ├── esp32s3.yaml
+│   │   └── esp32c3.yaml
+│   └── components/
+│       └── berbel/
+│           ├── __init__.py        ← ESPHome-Komponenten-Definition
+│           ├── berbel_component.h
+│           └── berbel_component.cpp
+├── scripts/
+│   └── update_version.sh
+├── Makefile
+├── setup.sh
+├── version.txt                    ← Basis-Version (MAJOR.MINOR)
+├── README.md
+├── .github/
+│   ├── workflows/
+│   │   └── build.yml
+│   └── copilot-instructions.md
+└── custom_components/             ← Ursprüngliche Home Assistant Integration
+    └── berbel/                    ← (für Referenz behalten)
+```
+
+---
+
+## Troubleshooting
+
+### ESP32 findet Berbel-Gerät nicht
+
+- Dunstabzugshaube einschalten und sicherstellen, dass sie im BLE-Modus ist
+- Keine andere App ist aktiv mit der Haube verbunden (BLE erlaubt nur eine Verbindung gleichzeitig)
+- Abstand < 5 Meter beim Scan
+- Scan erneut starten
+
+### Verbindung bricht ab
+
+- Normales Verhalten: Der ESP32 verbindet sich für jeden Befehl kurz, liest den Status und trennt sich wieder
+- Dauerverbindung ist nicht notwendig – Status wird alle 18 Sekunden aktualisiert
+
+### Web-Interface nicht erreichbar
+
+```bash
+# ESPHome-Logs prüfen
+make logs-esp32dev
+```
+
+oder direkt:
+
+```bash
+cd esphome && esphome logs boards/esp32dev.yaml
+```
+
+### Serielle Ausgabe (Debug)
+
+```bash
+make logs-esp32dev
+# oder
+cd esphome && esphome logs boards/esp32dev.yaml
+```
+
+Log-Level in `berbel_esp32.yaml` anpassen:
+
 ```yaml
 logger:
-  default: warning
-  logs:
-    custom_components.berbel: debug
+  level: DEBUG  # INFO / DEBUG / VERBOSE
 ```
 
-## 🧩 Legacy (older models)
+### Firmware zurücksetzen
 
-Some older Berbel hoods (e.g., advertising as HOOD_PER) use a different BLE protocol than the Skyline Edge Base. A decompiled vendor app (see template/sources/com/cybob/wescoremote/utils/Hood.java) shows:
+1. Neueste Firmware von [Releases](https://github.com/timboettiger/berbel-interface/releases) herunterladen
+2. Flashen:
+   ```bash
+   esptool.py --chip esp32 write_flash 0x0 berbel-esp32-esp32dev-firmware.bin
+   ```
 
-- Different GATT Services/Characteristics:
-  - Service (legacy): 52017769-797c-4cdd-9ff7-628b4eae5c9f
-  - Service (2018 variant): eb0ebe81-7dd6-489c-b0fc-2ede8e9c37fe
-  - RX characteristic (write ASCII): 58f49d41-c83e-4e5d-afe6-f3257c56effa
-  - RX characteristic (2018): 00a12d11-2172-4aae-869e-777e169ea742
-  - TX characteristic: 204c70ff-3227-4c46-a862-59d9f201b272
-  - Config characteristic: 51a6bb05-25ce-40a4-b184-c91afbb4327e
-- Commands are URL-encoded ASCII strings prefixed by a 4-digit PIN (default 1234), e.g. 1234 + cmd_off / cmd_luft1 / cmd_nachlauf etc.
-- State is primarily broadcast via manufacturer data in BLE advertisements (not via the same GATT characteristics this integration uses).
+---
 
-What’s implemented now
-- Detection scaffolding: The integration can detect legacy devices by name/UUIDs and will avoid using the modern binary protocol on them.
-- Constants for the legacy UUIDs and default PIN are included in custom_components/berbel/berbel_ble/const.py.
+## Lizenz
 
-What’s still needed to fully support legacy models
-1) Command mapping
-   - Map Home Assistant actions (fan levels, lights, postrun) to the app’s cmd_* ASCII commands (see template R.java for identifiers).
-   - Write URL-encoded bytes of "PIN + command" to the RX characteristic.
-2) State parsing
-   - Implement a passive advertisement parser to decode manufacturer data like Hood.java does (extract fan level, flags for lights, postrun, etc.).
-   - Update BerbelBluetoothDeviceParser to accept that data shape.
-3) Optional pairing PIN setting
-   - Add a config option to override the default PIN (1234).
+MIT License – siehe [LICENSE](LICENSE)
 
-Until 1) and 2) are implemented, legacy devices will show a clear log message and won’t attempt to control via the modern protocol (to prevent errors).
+## Hinweis
 
-## 🔄 Version History
-
-### v0.1.0 (Current)
-- Initial release for Berbel Skyline Edge Base
-- Fan control with 3 speed levels
-- Dual light control with brightness and color temperature
-- Postrun status monitoring
-- Optimized BLE connection pooling
-- Automatic device discovery
-
-## 🤝 Contributing
-
-Contributions are welcome! Please read the contributing guidelines before submitting pull requests.
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## ⚠️ Disclaimer
-
-This integration is not officially affiliated with or endorsed by berbel Ablufttechnik GmbH. It is an independent, community-driven project.
-
-Use at your own risk. The developer is not responsible for any damage to your device or property.
+Dieses Projekt ist kein offizielles Produkt der berbel Ablufttechnik GmbH. Es handelt sich um ein unabhängiges Community-Projekt. Nutzung auf eigenes Risiko.

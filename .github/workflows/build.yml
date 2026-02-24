@@ -1,0 +1,151 @@
+name: Build & Release Berbel ESP32 Firmware
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    name: Determine Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      tag: ${{ steps.ver.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute version
+        id: ver
+        run: |
+          BASE=$(cat version.txt | tr -d '[:space:]')
+          MAJOR=$(echo $BASE | cut -d. -f1)
+          MINOR=$(echo $BASE | cut -d. -f2)
+          PATCH=$(git rev-list --count HEAD)
+          HASH=$(git rev-parse --short HEAD)
+          VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "version=${VERSION}+${HASH}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Version: ${VERSION}+${HASH}"
+
+  build:
+    name: Build ${{ matrix.board }}
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        board:
+          - esp32dev
+          - esp32s3
+          - esp32c3
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install ESPHome
+        run: |
+          pip install --upgrade esphome
+
+      - name: Generate version.h
+        run: bash scripts/update_version.sh
+
+      - name: Create secrets.yaml
+        run: |
+          cat > esphome/secrets.yaml << 'EOF'
+          wifi_ssid: "build-placeholder"
+          wifi_password: "build-placeholder"
+          api_password: "build-placeholder"
+          ota_password: "build-placeholder"
+          EOF
+
+      - name: Compile firmware (${{ matrix.board }})
+        run: |
+          VERSION=$(bash scripts/update_version.sh | cut -d+ -f1)
+          cd esphome
+          esphome -s firmware_version "$VERSION" compile boards/${{ matrix.board }}.yaml
+
+      - name: Collect firmware artifact
+        run: |
+          mkdir -p artifacts/${{ matrix.board }}
+          find esphome/.esphome/build -name "*.bin" | while read f; do
+            fname=$(basename "$f")
+            cp "$f" "artifacts/${{ matrix.board }}/berbel-esp32-${{ matrix.board }}-${fname}"
+          done
+          ls -la artifacts/${{ matrix.board }}/
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.board }}
+          path: artifacts/${{ matrix.board }}/
+          retention-days: 30
+
+  release:
+    name: Create Release
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts/
+
+      - name: List artifacts
+        run: find release-artifacts/ -type f
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: "Berbel ESP32 ${{ needs.version.outputs.version }}"
+          body: |
+            ## Berbel ESP32 Firmware ${{ needs.version.outputs.version }}
+
+            Automatisch generierter Build vom Commit `${{ github.sha }}`.
+
+            ### Unterstützte Boards
+
+            | Datei | Board |
+            |-------|-------|
+            | `*-esp32dev-*.bin` | ESP32 DevKit v1 (generisch) |
+            | `*-esp32s3-*.bin` | ESP32-S3 DevKitC-1 |
+            | `*-esp32c3-*.bin` | ESP32-C3 DevKitM-1 |
+
+            ### Flash-Anleitung
+
+            ```bash
+            esptool.py --chip esp32 write_flash 0x0 berbel-esp32-esp32dev-firmware.bin
+            ```
+
+            Oder mit ESPHome:
+            ```bash
+            esphome upload boards/esp32dev.yaml --device /dev/ttyUSB0
+            ```
+          files: release-artifacts/**/*.bin
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
